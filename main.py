@@ -1,15 +1,18 @@
-from fastapi import FastAPI, File, UploadFile, Query, Form
+from fastapi import FastAPI, File, UploadFile, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
+import os
 
 from classifier import PotsdamSegmentationClassifier
 from models.unetpp import UnetPP_EfficientNetB0  # класс модели из unetpp.py
 
-# Путь к модели (относительный, чтобы работало на GitHub/Streamlit Cloud)
+# Путь к модели (локальный кеш)
 MODEL_PATH = "models/best_unetpp_efficientnetb0.pth"
+# ID файла на Google Drive (можно задать прямо здесь или через ENV)
+GDRIVE_FILE_ID = os.getenv("GDRIVE_FILE_ID", "1gKCR8pXAUwfk1kflaz3YTYwHLwrVvQ5_")
 
-app = FastAPI()
+app = FastAPI(title="Potsdam Segmentation Service")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,15 +21,21 @@ app.add_middleware(
 )
 
 # Глобальный сегментатор
-seg = None
+seg: PotsdamSegmentationClassifier = None
 
 @app.on_event("startup")
 async def startup():
     """Инициализация при запуске"""
     global seg
-    seg = PotsdamSegmentationClassifier(MODEL_PATH, tile=256, overlap=32, batch_size=8)
+    seg = PotsdamSegmentationClassifier(
+        model_path=MODEL_PATH,
+        tile=256,
+        overlap=32,
+        batch_size=8,
+        google_drive_file_id=GDRIVE_FILE_ID
+    )
     seg.load_model(model_class=UnetPP_EfficientNetB0)
-    print("PyTorch модель загружена и прогрета")
+    print("✅ PyTorch модель загружена и прогрета")
 
 @app.post("/segment/")
 async def segment(
