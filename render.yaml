@@ -5,9 +5,10 @@ services:
     plan: free
     repo: https://github.com/baanva02/segmentation-app-Potsdam
     branch: main
-    buildCommand: pip install -r requirements.txt
+    build:
+      pythonVersion: 3.12.3
+      buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
-    pythonVersion: 3.12.3
     envVars:
       - key: GDRIVE_FILE_ID
         value: 1gKCR8pXAUwfk1kflaz3YTYwHLwrVvQ5_
