@@ -3,7 +3,7 @@ services:
     name: segmentation-app
     env: python
     plan: free
-    repo: https://github.com/baanva02/segmentation-app-Potsdam
+    repo: https://github.com/baanva02/segmentation-app-Potsdam-
     branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
