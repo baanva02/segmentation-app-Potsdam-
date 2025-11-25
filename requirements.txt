@@ -1,5 +1,5 @@
 # ML core
-torch==2.1.2
+torch==2.2.0
 torchvision==0.16.1
 segmentation-models-pytorch==0.3.3
 
