@@ -1,6 +1,6 @@
 # ML core
-torch==2.2.0
-torchvision==0.16.1
+torch==2.9.1
+torchvision==0.24.1
 segmentation-models-pytorch==0.3.3
 
 # Data & math
@@ -25,3 +25,4 @@ requests==2.31.0
 matplotlib==3.8.2
 seaborn==0.13.0
 plotly==5.24.0
+
