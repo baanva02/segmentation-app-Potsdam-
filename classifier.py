@@ -2,7 +2,7 @@ import os
 import io
 import json
 import base64
-from typing import Dict, Tuple, List
+from typing import Tuple, List, Dict, Optional
 
 import numpy as np
 from PIL import Image
@@ -12,6 +12,7 @@ import requests
 import rasterio
 from rasterio.io import MemoryFile
 from rasterio.features import shapes
+from rasterio.transform import from_bounds
 
 
 class PotsdamSegmentationClassifier:
@@ -23,7 +24,7 @@ class PotsdamSegmentationClassifier:
         tile: int = 256,
         overlap: int = 32,
         batch_size: int = 8,
-        google_drive_file_id: str = None,
+        google_drive_file_id: Optional[str] = None,
     ):
         self.model_path = model_path
         self.tile = tile
@@ -35,12 +36,12 @@ class PotsdamSegmentationClassifier:
 
         # Легенда Potsdam (фиксированные цвета)
         self.class_colors = {
-            0: (0, 0, 0),          # Background - чёрный
-            1: (139, 69, 19),      # Buildings - коричневый
-            2: (128, 128, 128),    # Roads - серый
-            3: (0, 128, 0),        # Low vegetation - зелёный
-            4: (0, 255, 0),        # Trees - ярко-зелёный
-            5: (128, 0, 128),      # Cars - фиолетовый
+            0: (0, 0, 0),          # Background
+            1: (139, 69, 19),      # Buildings
+            2: (128, 128, 128),    # Roads
+            3: (0, 128, 0),        # Low vegetation
+            4: (0, 255, 0),        # Trees
+            5: (128, 0, 128),      # Cars
         }
         self.class_names = {
             0: "Background",
@@ -48,7 +49,7 @@ class PotsdamSegmentationClassifier:
             2: "Road",
             3: "Low vegetation",
             4: "Tree",
-            5: "Car"
+            5: "Car",
         }
 
         os.makedirs(os.path.dirname(self.model_path) or ".", exist_ok=True)
@@ -113,6 +114,13 @@ class PotsdamSegmentationClassifier:
 
     # ---------- Входные данные ----------
     def process_raster(self, file_bytes: bytes) -> Tuple[np.ndarray, dict, object, object]:
+        """
+        Возвращает:
+        - data: np.ndarray [H, W, 3] float32 в диапазоне [0,1]
+        - profile: исходный профиль растрового файла (или заглушка)
+        - transform: аффинное преобразование (или заглушка для PNG/JPG)
+        - crs: система координат (None для PNG/JPG)
+        """
         try:
             with MemoryFile(file_bytes) as memfile:
                 with memfile.open() as src:
@@ -134,7 +142,7 @@ class PotsdamSegmentationClassifier:
             h, w = data.shape[:2]
             profile = {"driver": "GTiff", "dtype": "uint8", "count": 1,
                        "height": h, "width": w, "compress": "lzw"}
-            transform = rasterio.transform.from_bounds(0, 0, w, h, w, h)
+            transform = from_bounds(0, 0, w, h, w, h)
             return data, profile, transform, None
 
     # ---------- Тайловка ----------
@@ -163,9 +171,9 @@ class PotsdamSegmentationClassifier:
             patch = data[y:y + self.tile, x:x + self.tile, :]
             inp = self._to_tensor(patch).to(self.device)
             with torch.no_grad():
-                out = self.model(inp)
+                out = self.model(inp)  # ожидается [B, C, H, W]
                 probs = torch.softmax(out, dim=1).cpu().numpy()
-                pred = probs.argmax(axis=1)[0]
+                pred = probs.argmax(axis=1)[0]  # [H, W]
             h, w = patch.shape[:2]
             class_map[y:y + h, x:x + w] = pred[:h, :w]
 
@@ -200,4 +208,92 @@ class PotsdamSegmentationClassifier:
         img = Image.fromarray(class_map.astype(np.uint8), mode="L")
         buf = io.BytesIO()
         img.save(buf, format="TIFF", compression="tiff_lzw")
-        buf
+        buf.seek(0)
+        return buf.getvalue()
+
+    def _vectorize_geojson(self, class_map: np.ndarray, transform: object, active_classes: Optional[List[int]]) -> str:
+        """
+        Генерация GeoJSON с полигонами по маске.
+        Для PNG/JPG (crs=None) геометрия будет в пиксельных координатах (по transform-заглушке).
+        """
+        mask = class_map.astype(np.int32)
+        features = []
+
+        # Если указаны активные классы — формируем отдельные полигоны только для них
+        target_classes = active_classes if active_classes else sorted(self.class_names.keys())
+
+        for cid in target_classes:
+            # Бинарная маска по классу
+            bin_mask = (mask == cid).astype(np.uint8)
+            if bin_mask.sum() == 0:
+                continue
+
+            for geom, val in shapes(bin_mask, transform=transform):
+                if val != 1:
+                    continue
+                features.append({
+                    "type": "Feature",
+                    "geometry": geom,
+                    "properties": {
+                        "class_id": int(cid),
+                        "class_name": self.class_names.get(cid, str(cid)),
+                        "color": self.class_colors.get(cid, (0, 0, 0))
+                    }
+                })
+
+        geojson = {
+            "type": "FeatureCollection",
+            "features": features
+        }
+        return json.dumps(geojson)
+
+    # ---------- Комплексный метод ----------
+    def segment_all(self, file_bytes: bytes, active_classes: Optional[List[int]] = None) -> Dict[str, object]:
+        """
+        Возвращает словарь:
+        - visualization: base64 PNG визуализации (по цветам)
+        - geotiff: base64 GeoTIFF (классы как uint8)
+        - tiff: base64 TIFF (uint8 маска)
+        - geojson: строка JSON с полигонами (по активным классам)
+        - stats: статистика по классам
+        """
+        # 1) Подготовка данных
+        data, profile, transform, crs = self.process_raster(file_bytes)
+
+        # 2) Сегментация
+        class_map = self.segment(data)  # [H, W] uint8
+
+        # 3) Визуализация (PNG, RGB)
+        vis_bytes = self._visualize_bytes(class_map)
+        vis_b64 = base64.b64encode(vis_bytes).decode("utf-8")
+
+        # 4) GeoTIFF (uint8 классы + геопривязка)
+        geotiff_bytes = self._write_geotiff_bytes(class_map, profile, transform, crs)
+        geotiff_b64 = base64.b64encode(geotiff_bytes).decode("utf-8")
+
+        # 5) TIFF (uint8 маска, без геопривязки)
+        tiff_bytes = self._write_tiff_bytes(class_map)
+        tiff_b64 = base64.b64encode(tiff_bytes).decode("utf-8")
+
+        # 6) GeoJSON (векторизация по активным классам)
+        geojson_str = self._vectorize_geojson(class_map, transform, active_classes)
+
+        # 7) Статистика
+        stats = {}
+        total = int(class_map.size)
+        for cid, name in self.class_names.items():
+            pixels = int((class_map == cid).sum())
+            percent = round(100.0 * pixels / total, 4) if total > 0 else 0.0
+            stats[int(cid)] = {
+                "name": name,
+                "pixels": pixels,
+                "percent": percent
+            }
+
+        return {
+            "visualization": vis_b64,
+            "geotiff": geotiff_b64,
+            "tiff": tiff_b64,
+            "geojson": geojson_str,
+            "stats": stats
+        
