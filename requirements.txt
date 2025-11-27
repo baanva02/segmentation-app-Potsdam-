@@ -1,28 +1,32 @@
-# ML core
-torch==2.9.1
-torchvision==0.24.1
-segmentation-models-pytorch==0.3.3
+# Core dependencies
+tensorflow==2.10.1
+numpy==1.23.5
+pillow==9.4.0
+matplotlib==3.6.3
 
-# Data & math
-numpy==1.26.4
-pandas==2.2.2
-scipy==1.11.4
+# Web frameworks
+fastapi==0.95.2
+uvicorn[standard]==0.21.1
+streamlit==1.21.0
 
-# Image & GIS
-pillow==10.2.0
-rasterio==1.3.9
-shapely==2.0.2
-geopandas==0.14.3
-scikit-image==0.22.0
+# Image processing and GIS
+rasterio==1.3.2
+geopandas==0.12.2
+shapely==1.8.5
+scikit-image==0.19.3
 
-# Streamlit
-streamlit==1.30.0
+# Data handling
+pandas==1.5.3
+scipy==1.10.1
 
-# Utils
-requests==2.31.0
+# Utilities
+python-multipart==0.0.6
+requests==2.28.2
+aiofiles==23.1.0
+python-jose[cryptography]==3.3.0
 
 # Visualization
-matplotlib==3.8.2
-seaborn==0.13.0
-plotly==5.24.0
+seaborn==0.12.2
+plotly==5.13.1
+
 
