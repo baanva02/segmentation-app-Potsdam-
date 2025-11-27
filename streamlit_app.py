@@ -33,8 +33,8 @@ for cid, name in seg.class_names.items():
     hex_color = '#%02x%02x%02x' % color
     st.sidebar.markdown(
         f"<div style='display:flex;align-items:center;'>"
-        f"<div style='width:20px;height:20px;background:{hex_color};border:1px solid #000;margin-right:8px;'></div>"
-        f"{name}</div>",
+        f"<div style='width:20px;height:20px;background:{hex_color};"
+        f"border:1px solid #000;margin-right:8px;'></div>{name}</div>",
         unsafe_allow_html=True
     )
 
@@ -96,13 +96,16 @@ if uploaded_file:
 
         # ---------- Кнопки скачивания ----------
         st.subheader("Скачать результат")
+        st.download_button("📥 GeoTIFF", geotiff_bytes,
+                           file_name="result_geotiff.tif", mime="image/tiff")
+        st.download_button("📥 TIFF", tiff_bytes,
+                           file_name="result.tiff", mime="image/tiff")
+        st.download_button("📥 PNG маска", vis_bytes,
+                           file_name="mask.png", mime="image/png")
+        st.download_button("📥 GeoJSON", geojson_str,
+                           file_name="result.geojson", mime="application/geo+json")
 
-        st.download_button("📥 GeoTIFF", geotiff_bytes, file_name="result_geotiff.tif", mime="image/tiff")
-        st.download_button("📥 TIFF", tiff_bytes, file_name="result.tiff", mime="image/tiff")
-        st.download_button("📥 PNG маска", vis_bytes, file_name="mask.png", mime="image/png")
-        st.download_button("📥 GeoJSON", geojson_str, file_name="result.geojson", mime="application/geo+json")
-
-        # ZIP со всеми форматами
+        # ---------- ZIP со всеми форматами ----------
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w") as zf:
             zf.writestr("mask.png", vis_bytes)
