@@ -7,6 +7,8 @@ import time
 from classifier import PotsdamSegmentationClassifier
 from models.unetpp import UnetPP_EfficientNetB0
 
+# ---------- Настройки страницы (должно быть первым!) ----------
+st.set_page_config(page_title="Potsdam Segmentation", layout="wide")
 
 # ---------- Кэшируем загрузку модели ----------
 @st.cache_resource
@@ -21,10 +23,7 @@ def load_seg():
     seg.load_model(model_class=UnetPP_EfficientNetB0)
     return seg
 
-
 seg = load_seg()
-
-st.set_page_config(page_title="Potsdam Segmentation", layout="wide")
 
 # ---------- Сайдбар: легенда ----------
 st.sidebar.header("🎨 Легенда")
