@@ -42,12 +42,18 @@ st.sidebar.info("Сегментация аэрофотоснимков с исп
 # ---------- Основной интерфейс ----------
 st.title("Сегментация аэрофотоснимков")
 
-# один вызов загрузчика
 uploaded_file = st.file_uploader(
     "📤 Загрузите изображение (TIF, TIFF, JPG, PNG)",
     type=["tif", "tiff", "jpg", "jpeg", "png"],
     key="main_uploader"
 )
+
+if uploaded_file is not None:
+    # всегда обновляем состояние при новой загрузке
+    st.session_state["file_name"] = uploaded_file.name
+    st.session_state["file_bytes"] = uploaded_file.getvalue()
+    st.success(f"✅ Файл выбран: {uploaded_file.name}")
+
 
 classes = st.multiselect(
     "🧭 Выберите классы для сегментации",
