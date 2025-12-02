@@ -42,8 +42,8 @@ class PotsdamSegmentationClassifier:
         }
         self.class_names = {
             0: "Background",
-            1: "Building",
-            2: "Road",
+            1: "Road/Impervious surfaces",
+            2: "Building",
             3: "Low vegetation",
             4: "Tree",
             5: "Car",
