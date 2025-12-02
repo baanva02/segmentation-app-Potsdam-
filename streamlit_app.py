@@ -60,11 +60,11 @@ if uploaded_file is not None:
     st.session_state["file_bytes"] = uploaded_file.getvalue()
     st.success(f"✅ Файл выбран: {uploaded_file.name}")
 
-if "file_bytes" in st.session_state:
-    if st.button("🚀 Начать сегментацию"):
-        st.session_state["results"] = seg.segment_all(
-            st.session_state["file_bytes"], active_classes=classes
-        )
+# ---------- Запуск сегментации только по кнопке ----------
+if "file_bytes" in st.session_state and st.button("🚀 Начать сегментацию"):
+    st.session_state["results"] = seg.segment_all(
+        st.session_state["file_bytes"], active_classes=classes
+    )
 
 # ---------- Отображение результатов, если они есть ----------
 if "results" in st.session_state:
