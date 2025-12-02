@@ -16,15 +16,13 @@ from rasterio.transform import from_bounds
 
 
 class PotsdamSegmentationClassifier:
-    """Сегментатор аэрофотоснимков Potsdam на PyTorch с автозагрузкой модели с Google Drive"""
-
     def __init__(
         self,
         model_path: str = "models/best_unetpp_efficientnetb0.pth",
         tile: int = 256,
         overlap: int = 32,
         batch_size: int = 8,
-        google_drive_file_id: Optional[str] = "1gKCR8pXAUwfk1kflaz3YTYwHLwrVvQ5_",  # твой ID
+        google_drive_file_id: Optional[str] = "1gKCR8pXAUwfk1kflaz3YTYwHLwrVvQ5_",
     ):
         self.model_path = model_path
         self.tile = tile
@@ -34,14 +32,13 @@ class PotsdamSegmentationClassifier:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.google_drive_file_id = google_drive_file_id
 
-        # Легенда Potsdam (фиксированные цвета)
         self.class_colors = {
-            0: (0, 0, 0),          # Background
-            1: (139, 69, 19),      # Buildings
-            2: (128, 128, 128),    # Roads
-            3: (0, 128, 0),        # Low vegetation
-            4: (0, 255, 0),        # Trees
-            5: (128, 0, 128),      # Cars
+            0: (0, 0, 0),
+            1: (139, 69, 19),
+            2: (128, 128, 128),
+            3: (0, 128, 0),
+            4: (0, 255, 0),
+            5: (128, 0, 128),
         }
         self.class_names = {
             0: "Background",
@@ -54,29 +51,32 @@ class PotsdamSegmentationClassifier:
 
         os.makedirs(os.path.dirname(self.model_path) or ".", exist_ok=True)
 
-    # ---------- Загрузка модели с Google Drive ----------
     def _download_model_from_gdrive(self, file_id: str, dest_path: str) -> None:
         url = f"https://drive.google.com/uc?export=download&id={file_id}"
         gdown.download(url, dest_path, quiet=False)
 
     def ensure_model(self) -> None:
-        # если файл существует, но это HTML (начинается с "<"), удаляем
-        if os.path.exists(self.model_path):
-            with open(self.model_path, "rb") as f:
-                head = f.read(10)
-            if head.startswith(b"<"):
-                print("⚠️ Найден HTML вместо модели, удаляем...")
-                os.remove(self.model_path)
+        def is_invalid(path: str) -> bool:
+            if not os.path.exists(path):
+                return True
+            if os.path.getsize(path) < 1024:
+                return True
+            with open(path, "rb") as f:
+                head = f.read(1024).lower()
+            return b"<html" in head
 
-        # если файла нет — качаем заново
-        if not os.path.exists(self.model_path):
+        if is_invalid(self.model_path):
+            if os.path.exists(self.model_path):
+                print("⚠️ Повреждённый файл найден, удаляем...")
+                os.remove(self.model_path)
             if not self.google_drive_file_id:
                 raise RuntimeError("Файл модели отсутствует и google_drive_file_id не задан.")
-            print("🔄 Модель не найдена — загружаем с Google Drive...")
+            print("🔄 Загружаем модель с Google Drive...")
             self._download_model_from_gdrive(self.google_drive_file_id, self.model_path)
+            if is_invalid(self.model_path):
+                raise RuntimeError("❌ Скачанный файл не является корректным PyTorch checkpoint.")
             print(f"✅ Модель загружена: {self.model_path}")
 
-    # ---------- Инициализация модели ----------
     def load_model(self, model_class):
         if self.model is not None:
             return
@@ -85,33 +85,21 @@ class PotsdamSegmentationClassifier:
 
         self.ensure_model()
 
-        m = model_class()
-        checkpoint = torch.load(self.model_path, map_location=self.device)
-
-        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-            sd = checkpoint["model_state_dict"]
-        else:
-            sd = checkpoint
-
         try:
-            m.load_state_dict(sd, strict=True)
-        except RuntimeError as e:
-            print("⚠️ Несовпадение state_dict при strict=True.\n", str(e))
-            m.load_state_dict(sd, strict=False)
+            checkpoint = torch.load(self.model_path, map_location=self.device)
+            m = model_class()
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                checkpoint = checkpoint["model_state_dict"]
+            m.load_state_dict(checkpoint, strict=False)
+        except Exception as e:
+            print("⚠️ Не удалось загрузить state_dict, пробуем как целую модель:", e)
+            m = torch.load(self.model_path, map_location=self.device)
 
         self.model = m
         self.model.eval()
         self.model.to(self.device)
 
-    # ---------- Входные данные ----------
     def process_raster(self, file_bytes: bytes) -> Tuple[np.ndarray, dict, object, object]:
-        """
-        Возвращает:
-        - data: np.ndarray [H, W, 3] float32 в диапазоне [0,1]
-        - profile: исходный профиль растрового файла (или заглушка)
-        - transform: аффинное преобразование (или заглушка для PNG/JPG)
-        - crs: система координат (None для PNG/JPG)
-        """
         try:
             with MemoryFile(file_bytes) as memfile:
                 with memfile.open() as src:
@@ -136,7 +124,6 @@ class PotsdamSegmentationClassifier:
             transform = from_bounds(0, 0, w, h, w, h)
             return data, profile, transform, None
 
-    # ---------- Тайловка ----------
     def _to_tensor(self, img: np.ndarray) -> torch.Tensor:
         return torch.from_numpy(img).permute(2, 0, 1).unsqueeze(0)
 
@@ -144,14 +131,10 @@ class PotsdamSegmentationClassifier:
         stride = max(1, self.tile - self.overlap)
         xs = list(range(0, max(W - self.tile, 0) + 1, stride))
         ys = list(range(0, max(H - self.tile, 0) + 1, stride))
-        if len(xs) == 0:
-            xs = [0]
-        if len(ys) == 0:
-            ys = [0]
-        if xs[-1] != max(W - self.tile, 0):
-            xs.append(max(W - self.tile, 0))
-        if ys[-1] != max(H - self.tile, 0):
-            ys.append(max(H - self.tile, 0))
+        if len(xs) == 0: xs = [0]
+        if len(ys) == 0: ys = [0]
+        if xs[-1] != max(W - self.tile, 0): xs.append(max(W - self.tile, 0))
+        if ys[-1] != max(H - self.tile, 0): ys.append(max(H - self.tile, 0))
         return [(y, x) for y in ys for x in xs]
 
     def segment(self, data: np.ndarray) -> np.ndarray:
@@ -166,15 +149,14 @@ class PotsdamSegmentationClassifier:
             patch = data[y:y + self.tile, x:x + self.tile, :]
             inp = self._to_tensor(patch).to(self.device)
             with torch.no_grad():
-                out = self.model(inp)  # [B, C, H, W]
+                out = self.model(inp)
                 probs = torch.softmax(out, dim=1).cpu().numpy()
-                pred = probs.argmax(axis=1)[0]  # [H, W]
+                pred = probs.argmax(axis=1)[0]
             h, w = patch.shape[:2]
             class_map[y:y + h, x:x + w] = pred[:h, :w]
 
         return class_map
 
-    # ---------- Экспорт ----------
     def _visualize_bytes(self, class_map: np.ndarray) -> bytes:
         h, w = class_map.shape
         rgb = np.zeros((h, w, 3), dtype=np.uint8)
@@ -197,7 +179,7 @@ class PotsdamSegmentationClassifier:
                     dst.transform = transform
                 if crs is not None:
                     dst.crs = crs
-            return memfile.read()
+            return memfile.read() 
 
     def _write_tiff_bytes(self, class_map: np.ndarray) -> bytes:
         img = Image.fromarray(class_map.astype(np.uint8), mode="L")
