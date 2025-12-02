@@ -41,12 +41,12 @@ class PotsdamSegmentationClassifier:
             5: (128, 0, 128),
         }
         self.class_names = {
-            0: "Background",
-            1: "Building",
-            2: "Road",
-            3: "Low vegetation",
-            4: "Tree",
-            5: "Car",
+            0: "Фон",
+            1: "Здание",
+            2: "Дорога",
+            3: "Низкая растительность",
+            4: "Дерево",
+            5: "Автомобиль",
         }
 
         os.makedirs(os.path.dirname(self.model_path) or ".", exist_ok=True)
