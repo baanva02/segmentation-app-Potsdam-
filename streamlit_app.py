@@ -2,7 +2,6 @@ import streamlit as st
 import base64
 import io
 import zipfile
-import time
 
 from classifier import PotsdamSegmentationClassifier
 from models.unetpp import UnetPP_EfficientNetB0
@@ -11,6 +10,7 @@ from models.unetpp import UnetPP_EfficientNetB0
 st.set_page_config(page_title="Сегментация аэрофотоснимков", layout="wide")
 
 # ---------- Кэшируем загрузку модели ----------
+@st.cache_resource
 def load_seg():
     seg = PotsdamSegmentationClassifier(
         model_path="models/best_unetpp_efficientnetb0.pth",
@@ -54,63 +54,56 @@ classes = st.multiselect(
     default=list(seg.class_names.keys())
 )
 
-if uploaded_file:
+# ---------- Работаем с файлом через session_state ----------
+if uploaded_file is not None:
+    st.session_state["file_name"] = uploaded_file.name
+    st.session_state["file_bytes"] = uploaded_file.getvalue()
     st.success(f"✅ Файл выбран: {uploaded_file.name}")
 
+if "file_bytes" in st.session_state:
     if st.button("🚀 Начать сегментацию"):
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        st.session_state["results"] = seg.segment_all(
+            st.session_state["file_bytes"], active_classes=classes
+        )
 
-        # ---------- Этап 1: чтение файла ----------
-        status_text.text("📂 Чтение изображения...")
-        contents = uploaded_file.read()
-        progress_bar.progress(20)
-        time.sleep(0.3)
+# ---------- Отображение результатов, если они есть ----------
+if "results" in st.session_state:
+    results = st.session_state["results"]
 
-        # ---------- Этап 2: сегментация ----------
-        status_text.text("🧠 Выполняется сегментация...")
-        results = seg.segment_all(contents, active_classes=classes)
-        progress_bar.progress(70)
-        time.sleep(0.3)
+    # Визуализация
+    st.subheader("🖼️ Визуализация сегментации")
+    vis_bytes = base64.b64decode(results["visualization"])
+    st.image(vis_bytes, caption="Цветовая маска", use_column_width=True)
 
-        # ---------- Этап 3: экспорт ----------
-        status_text.text("📦 Подготовка результатов...")
-        vis_bytes = base64.b64decode(results["visualization"])
-        geotiff_bytes = base64.b64decode(results["geotiff"])
-        tiff_bytes = base64.b64decode(results["tiff"])
-        geojson_str = results["geojson"]
-        progress_bar.progress(100)
-        status_text.text("✅ Готово!")
+    # Статистика
+    st.subheader("📊 Статистика по классам")
+    stats = results["stats"]
+    for cid, s in stats.items():
+        st.write(f"• {s['name']}: {s['pixels']} пикселей ({s['percent']}%)")
 
-        # ---------- Визуализация ----------
-        st.subheader("🖼️ Визуализация сегментации")
-        st.image(vis_bytes, caption="Цветовая маска", use_column_width=True)
+    # Скачивание
+    st.subheader("📥 Скачать результаты")
+    geotiff_bytes = base64.b64decode(results["geotiff"])
+    tiff_bytes = base64.b64decode(results["tiff"])
+    geojson_str = results["geojson"]
 
-        # ---------- Статистика ----------
-        st.subheader("📊 Статистика по классам")
-        stats = results["stats"]
-        for cid, s in stats.items():
-            st.write(f"• {s['name']}: {s['pixels']} пикселей ({s['percent']}%)")
+    st.download_button("📥 GeoTIFF", geotiff_bytes,
+                       file_name="результат_geotiff.tif", mime="image/tiff")
+    st.download_button("📥 TIFF (маска)", tiff_bytes,
+                       file_name="результат.tiff", mime="image/tiff")
+    st.download_button("📥 PNG (визуализация)", vis_bytes,
+                       file_name="маска.png", mime="image/png")
+    st.download_button("📥 GeoJSON (векторизация)", geojson_str,
+                       file_name="результат.geojson", mime="application/geo+json")
 
-        # ---------- Скачивание ----------
-        st.subheader("📥 Скачать результаты")
-        st.download_button("📥 GeoTIFF", geotiff_bytes,
-                           file_name="результат_geotiff.tif", mime="image/tiff")
-        st.download_button("📥 TIFF (маска)", tiff_bytes,
-                           file_name="результат.tiff", mime="image/tiff")
-        st.download_button("📥 PNG (визуализация)", vis_bytes,
-                           file_name="маска.png", mime="image/png")
-        st.download_button("📥 GeoJSON (векторизация)", geojson_str,
-                           file_name="результат.geojson", mime="application/geo+json")
+    # ZIP архив
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w") as zf:
+        zf.writestr("маска.png", vis_bytes)
+        zf.writestr("маска_geotiff.tif", geotiff_bytes)
+        zf.writestr("маска.tiff", tiff_bytes)
+        zf.writestr("маска.geojson", geojson_str)
+    zip_buf.seek(0)
 
-        # ---------- ZIP архив ----------
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, "w") as zf:
-            zf.writestr("маска.png", vis_bytes)
-            zf.writestr("маска_geotiff.tif", geotiff_bytes)
-            zf.writestr("маска.tiff", tiff_bytes)
-            zf.writestr("маска.geojson", geojson_str)
-        zip_buf.seek(0)
-
-        st.download_button("📥 ZIP-архив (все форматы)", zip_buf.getvalue(),
-                           file_name="результаты_сегментации.zip", mime="application/zip")
+    st.download_button("📥 ZIP-архив (все форматы)", zip_buf.getvalue(),
+                       file_name="результаты_сегментации.zip", mime="application/zip")
