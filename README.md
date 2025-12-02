@@ -47,6 +47,7 @@ streamlit run streamlit_app.py
 
 ## 📁 Структура проекта
 
+```bash
 segmentation-app-Potsdam-/
 ├── streamlit_app.py          # Streamlit-интерфейс
 ├── classifier.py             # Класс сегментации
@@ -55,7 +56,7 @@ segmentation-app-Potsdam-/
 ├── LICENSE                   # Лицензия MIT
 ├── README.md                 # Описание проекта
 └── .gitignore                # Исключения для Git
-
+```
 ---
 
 ## 📊 Классы сегментации
