@@ -56,7 +56,7 @@ class PotsdamSegmentationClassifier:
 
     # ---------- Загрузка модели с Google Drive ----------
     def _download_model_from_gdrive(self, file_id: str, dest_path: str) -> None:
-        url = f"https://drive.google.com/uc?id={file_id}"
+        url = f"https://drive.google.com/uc?export=download&id={file_id}"
         gdown.download(url, dest_path, quiet=False)
 
     def ensure_model(self) -> None:
