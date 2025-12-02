@@ -35,6 +35,7 @@
 git clone https://github.com/baanva02/segmentation-app-Potsdam-.git
 cd segmentation-app-Potsdam-
 pip install -r requirements.txt
+```
 
 ---
 
