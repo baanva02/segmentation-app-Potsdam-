@@ -296,4 +296,5 @@ class PotsdamSegmentationClassifier:
             "tiff": tiff_b64,
             "geojson": geojson_str,
             "stats": stats
+        }
         
