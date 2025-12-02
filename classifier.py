@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 import torch
-import requests
+import gdown
 import rasterio
 from rasterio.io import MemoryFile
 from rasterio.features import shapes
@@ -24,7 +24,7 @@ class PotsdamSegmentationClassifier:
         tile: int = 256,
         overlap: int = 32,
         batch_size: int = 8,
-        google_drive_file_id: Optional[str] = None,
+        google_drive_file_id: Optional[str] = "1gKCR8pXAUwfk1kflaz3YTYwHLwrVvQ5_",  # твой ID
     ):
         self.model_path = model_path
         self.tile = tile
@@ -56,26 +56,8 @@ class PotsdamSegmentationClassifier:
 
     # ---------- Загрузка модели с Google Drive ----------
     def _download_model_from_gdrive(self, file_id: str, dest_path: str) -> None:
-        session = requests.Session()
-        base_url = "https://docs.google.com/uc?export=download"
-
-        response = session.get(base_url, params={"id": file_id}, stream=True)
-        token = None
-        for k, v in response.cookies.items():
-            if k.startswith("download_warning"):
-                token = v
-                break
-
-        if token:
-            response = session.get(base_url, params={"id": file_id, "confirm": token}, stream=True)
-
-        if response.status_code != 200:
-            raise RuntimeError(f"Ошибка загрузки модели: HTTP {response.status_code}")
-
-        with open(dest_path, "wb") as f:
-            for chunk in response.iter_content(32768):
-                if chunk:
-                    f.write(chunk)
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, dest_path, quiet=False)
 
     def ensure_model(self) -> None:
         if not os.path.exists(self.model_path):
@@ -153,10 +135,14 @@ class PotsdamSegmentationClassifier:
         stride = max(1, self.tile - self.overlap)
         xs = list(range(0, max(W - self.tile, 0) + 1, stride))
         ys = list(range(0, max(H - self.tile, 0) + 1, stride))
-        if len(xs) == 0: xs = [0]
-        if len(ys) == 0: ys = [0]
-        if xs[-1] != max(W - self.tile, 0): xs.append(max(W - self.tile, 0))
-        if ys[-1] != max(H - self.tile, 0): ys.append(max(H - self.tile, 0))
+        if len(xs) == 0:
+            xs = [0]
+        if len(ys) == 0:
+            ys = [0]
+        if xs[-1] != max(W - self.tile, 0):
+            xs.append(max(W - self.tile, 0))
+        if ys[-1] != max(H - self.tile, 0):
+            ys.append(max(H - self.tile, 0))
         return [(y, x) for y in ys for x in xs]
 
     def segment(self, data: np.ndarray) -> np.ndarray:
@@ -171,7 +157,7 @@ class PotsdamSegmentationClassifier:
             patch = data[y:y + self.tile, x:x + self.tile, :]
             inp = self._to_tensor(patch).to(self.device)
             with torch.no_grad():
-                out = self.model(inp)  # ожидается [B, C, H, W]
+                out = self.model(inp)  # [B, C, H, W]
                 probs = torch.softmax(out, dim=1).cpu().numpy()
                 pred = probs.argmax(axis=1)[0]  # [H, W]
             h, w = patch.shape[:2]
@@ -219,15 +205,12 @@ class PotsdamSegmentationClassifier:
         mask = class_map.astype(np.int32)
         features = []
 
-        # Если указаны активные классы — формируем отдельные полигоны только для них
         target_classes = active_classes if active_classes else sorted(self.class_names.keys())
 
         for cid in target_classes:
-            # Бинарная маска по классу
             bin_mask = (mask == cid).astype(np.uint8)
             if bin_mask.sum() == 0:
                 continue
-
             for geom, val in shapes(bin_mask, transform=transform):
                 if val != 1:
                     continue
@@ -257,28 +240,20 @@ class PotsdamSegmentationClassifier:
         - geojson: строка JSON с полигонами (по активным классам)
         - stats: статистика по классам
         """
-        # 1) Подготовка данных
         data, profile, transform, crs = self.process_raster(file_bytes)
+        class_map = self.segment(data)
 
-        # 2) Сегментация
-        class_map = self.segment(data)  # [H, W] uint8
-
-        # 3) Визуализация (PNG, RGB)
         vis_bytes = self._visualize_bytes(class_map)
         vis_b64 = base64.b64encode(vis_bytes).decode("utf-8")
 
-        # 4) GeoTIFF (uint8 классы + геопривязка)
         geotiff_bytes = self._write_geotiff_bytes(class_map, profile, transform, crs)
         geotiff_b64 = base64.b64encode(geotiff_bytes).decode("utf-8")
 
-        # 5) TIFF (uint8 маска, без геопривязки)
         tiff_bytes = self._write_tiff_bytes(class_map)
         tiff_b64 = base64.b64encode(tiff_bytes).decode("utf-8")
 
-        # 6) GeoJSON (векторизация по активным классам)
         geojson_str = self._vectorize_geojson(class_map, transform, active_classes)
 
-        # 7) Статистика
         stats = {}
         total = int(class_map.size)
         for cid, name in self.class_names.items():
@@ -297,4 +272,3 @@ class PotsdamSegmentationClassifier:
             "geojson": geojson_str,
             "stats": stats
         }
-        
