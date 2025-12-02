@@ -60,6 +60,15 @@ class PotsdamSegmentationClassifier:
         gdown.download(url, dest_path, quiet=False)
 
     def ensure_model(self) -> None:
+        # если файл существует, но это HTML (начинается с "<"), удаляем
+        if os.path.exists(self.model_path):
+            with open(self.model_path, "rb") as f:
+                head = f.read(10)
+            if head.startswith(b"<"):
+                print("⚠️ Найден HTML вместо модели, удаляем...")
+                os.remove(self.model_path)
+
+        # если файла нет — качаем заново
         if not os.path.exists(self.model_path):
             if not self.google_drive_file_id:
                 raise RuntimeError("Файл модели отсутствует и google_drive_file_id не задан.")
