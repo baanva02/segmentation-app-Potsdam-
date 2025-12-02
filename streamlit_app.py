@@ -11,7 +11,6 @@ from models.unetpp import UnetPP_EfficientNetB0
 st.set_page_config(page_title="Сегментация аэрофотоснимков", layout="wide")
 
 # ---------- Кэшируем загрузку модели ----------
-@st.cache_resource
 def load_seg():
     seg = PotsdamSegmentationClassifier(
         model_path="models/best_unetpp_efficientnetb0.pth",
