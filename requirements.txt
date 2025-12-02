@@ -4,6 +4,10 @@ numpy==1.23.5
 pillow==9.4.0
 matplotlib==3.6.3
 
+# Deep learning
+torch==2.1.0
+torchvision==0.16.0
+
 # Web frameworks
 fastapi==0.95.2
 uvicorn[standard]==0.21.1
