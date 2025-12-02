@@ -56,32 +56,32 @@ class PotsdamSegmentationClassifier:
         gdown.download(url, dest_path, quiet=False)
 
     def ensure_model(self) -> None:
-    def is_invalid(path: str) -> bool:
-        if not os.path.exists(path):
-            return True
-        if os.path.getsize(path) < 1024:
-            return True
-        with open(path, "rb") as f:
-            head = f.read(1024).lower()
-        return b"<html" in head or b"<!doctype html" in head
+       def is_invalid(path: str) -> bool:
+           if not os.path.exists(path):
+               return True
+           if os.path.getsize(path) < 1024:
+               return True
+           with open(path, "rb") as f:
+               head = f.read(1024).lower()
+           return b"<html" in head or b"<!doctype html" in head
 
-    # Удаляем, если файл уже существует и повреждён
-    if is_invalid(self.model_path):
-        if os.path.exists(self.model_path):
-            print("⚠️ Повреждённый файл найден, удаляем...")
-            os.remove(self.model_path)
+       # Удаляем, если файл уже существует и повреждён
+       if is_invalid(self.model_path):
+          if os.path.exists(self.model_path):
+              print("⚠️ Повреждённый файл найден, удаляем...")
+              os.remove(self.model_path)
 
-    # Скачиваем заново
-    if not os.path.exists(self.model_path):
-        if not self.google_drive_file_id:
-            raise RuntimeError("Файл модели отсутствует и google_drive_file_id не задан.")
-        print("🔄 Загружаем модель с Google Drive...")
-        self._download_model_from_gdrive(self.google_drive_file_id, self.model_path)
+      # Скачиваем заново
+      if not os.path.exists(self.model_path):
+          if not self.google_drive_file_id:
+              raise RuntimeError("Файл модели отсутствует и google_drive_file_id не задан.")
+          print("🔄 Загружаем модель с Google Drive...")
+          self._download_model_from_gdrive(self.google_drive_file_id, self.model_path)
 
-        # Проверяем после скачивания
-        if is_invalid(self.model_path):
-            raise RuntimeError("❌ Скачанный файл не является корректным PyTorch checkpoint.")
-        print(f"✅ Модель загружена: {self.model_path}")
+          # Проверяем после скачивания
+          if is_invalid(self.model_path):
+              raise RuntimeError("❌ Скачанный файл не является корректным PyTorch checkpoint.")
+          print(f"✅ Модель загружена: {self.model_path}")
 
 
     def load_model(self, model_class):
