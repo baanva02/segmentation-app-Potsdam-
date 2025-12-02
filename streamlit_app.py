@@ -42,9 +42,11 @@ st.sidebar.info("Сегментация аэрофотоснимков с исп
 # ---------- Основной интерфейс ----------
 st.title("Сегментация аэрофотоснимков")
 
+# один вызов загрузчика
 uploaded_file = st.file_uploader(
     "📤 Загрузите изображение (TIF, TIFF, JPG, PNG)",
-    type=["tif", "tiff", "jpg", "jpeg", "png"]
+    type=["tif", "tiff", "jpg", "jpeg", "png"],
+    key="main_uploader"
 )
 
 classes = st.multiselect(
@@ -55,18 +57,11 @@ classes = st.multiselect(
 )
 
 # ---------- Работаем с файлом через session_state ----------
-uploaded_file = st.file_uploader(
-    "📤 Загрузите изображение (TIF, TIFF, JPG, PNG)",
-    type=["tif", "tiff", "jpg", "jpeg", "png"]
-)
-
-# сохраняем только один раз, чтобы не слетало при обновлении
 if uploaded_file is not None and "file_bytes" not in st.session_state:
     st.session_state["file_name"] = uploaded_file.name
     st.session_state["file_bytes"] = uploaded_file.getvalue()
     st.success(f"✅ Файл выбран: {uploaded_file.name}")
 
-# если файл уже есть в session_state, показываем сообщение
 elif "file_name" in st.session_state:
     st.info(f"📂 Используется файл: {st.session_state['file_name']}")
 
